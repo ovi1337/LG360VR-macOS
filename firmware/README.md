@@ -259,6 +259,32 @@ PD-Ebene). Aufsetzerkennung ändert am Ergebnis nichts.
 
 ## 4d. Externe Bestätigung & Protokoll-Korrektur (strfry)
 
+> **✅ LIVE BESTÄTIGT (diese Session): DFU-Modus erreicht — Recovery-Pfad bewiesen.**
+> Mit `go_dload.py` (Opcode `0x09`, ungepolstert) **wiederholt** im Boot-Loop-
+> Fenster gesendet (~33 Sends/25 s), schaltet die Brille in den DFU-Modus. Der
+> Einzel-Send genügte NICHT — das Kommando muss im richtigen ~1,4-s-Fenster
+> mehrfach ankommen (die HID-Schnittstelle wird beim Umschalten abgebaut →
+> `IOHIDDeviceSetReport … device not responding` ist genau das Erfolgssignal).
+> Danach:
+> ```
+> Found DFU: [1004:6374] ver=0200, devnum=1, cfg=1, intf=0, alt=0,
+>            name="UNKNOWN", serial="00000000001A"   (dfu-util -l, UNGEFILTERT)
+> DFU version 011a  (= DfuSe/ST-Erweiterung), transfer size 1024, dfuIDLE
+> ```
+> **Damit ist erstmals ein Recovery-Pfad real nachgewiesen** — die Grundlage,
+> um einen Flash-Versuch überhaupt verantworten zu können.
+>
+> **Backup-Grenze:** Der Upload (Auslesen) funktioniert prinzipiell (`CanUpload`),
+> aber diese LGE-DfuSe-Variante liefert keinen adressierbaren Voll-Dump: der
+> Memory-Layout-String (String-Descriptor 6) ist nicht lesbar, `Set Address
+> Pointer` (0x21) wird zwar mit `dfuDNLOAD-IDLE` quittiert, das anschließende
+> `UPLOAD` liest aber trotzdem ab `0x08000000` (bzw. wiederholt sich alle 16 KB).
+> **Nur der erste 1-KB-Block ist zuverlässig** — und er ist **byte-identisch mit
+> dem Stock-`elem_08000000.bin`**. → Die Brille fährt Stock-Firmware; das
+> vorhandene `.dfu` ist ein gültiges Recovery-Image (ein separater On-Device-Dump
+> ist weder möglich noch nötig). **Es wurde weiterhin NICHTS geflasht.**
+> Der DFU-Modus ist flüchtig: **einmal ab-/anstecken** → wieder normaler HID-Modus.
+
 Zwei externe Quellen von **strfry** bestätigen die Kernanalyse und korrigieren
 Detailfehler:
 

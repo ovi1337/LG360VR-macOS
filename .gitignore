@@ -27,3 +27,6 @@ windows/**/obj/
 # === Python ===
 __pycache__/
 *.pyc
+
+# on-device firmware reads (LG copyright, do not commit)
+firmware/dumps/
