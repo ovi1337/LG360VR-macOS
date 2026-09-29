@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- LG 360 VR (LGR100AT): VID 0x1004 (4100), PID 0x6374 (25460) -->
+    <usb-device vendor-id="4100" product-id="25460" />
+</resources>

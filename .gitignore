@@ -1,0 +1,29 @@
+# === macOS ===
+.DS_Store
+
+# === Copyright: LG-owned binaries are NOT redistributed here ===
+# LG firmware images and extracted segments (LG Electronics copyright)
+firmware/*.dfu
+firmware/elements/
+# LG application packages (LG Electronics copyright)
+apks/
+*.apk
+
+# === Android build artifacts ===
+android/.gradle/
+android/.kotlin/
+android/build/
+android/app/build/
+android/local.properties
+android/**/*.iml
+.idea/
+captures/
+
+# === Windows / .NET build artifacts ===
+windows/**/bin/
+windows/**/obj/
+*.user
+
+# === Python ===
+__pycache__/
+*.pyc
