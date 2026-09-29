@@ -326,6 +326,52 @@ Software-/Firmware-Problem**. Er erfordert eine **aktive USB-C-PD-Zwischenplatin
 identisch zu strfrys Hardware-Ansatz. Firmware-Patches der Brille allein
 (Watchdog/Reset) genügen dafür nicht.
 
+## 4e. Kann die Firmware den PD-Handshake lösen? (Analyse)
+
+**Kurzantwort: Nicht sauber — der PD-Handshake liegt gar nicht in der flashbaren
+Firmware.**
+
+**Belege (Symbol-/String-Analyse aller 3 Elemente):**
+- In `elem0`/`elem1`/`elem2` gibt es **null** USB-PD-Logik — keine Strings/Symbole
+  für `PD`, `Type-C`, `CC1/CC2`, `alt-mode`, `SVID`, `VDM`, `DisplayPort`,
+  `Discover`, `Enter Mode`, `orientation`, `Billboard`.
+- Die STM32-App macht nur: HID-Kommandos, Sensoren und **I²C-Register-Init** der
+  Video-Chips (`ANX7401_Init`, `ANX7401_power_on`, `BSP_ANX7737_On`,
+  `BSP_TC358870XBG_*`, `NCP6924`, `SM5306`).
+
+**Architektur-Schlussfolgerung:**
+
+| Baustein | Rolle | Von uns flashbar? |
+|----------|-------|-------------------|
+| **STM32** | App-MCU: HID, Sensoren, Power-Sequencing, I²C-Init — **kennt kein PD** | ✅ ja (DFU) |
+| **ANX7401 / ANX7737** (Analogix) | **USB-C-PD-Handshake + DP-Alt-Mode autonom** über CC-Leitungen | ❌ eigenes Silizium/OTP, proprietär |
+
+Der Handshake läuft **im Analogix-Chip**, nicht im STM32. Und dieser Chip wird
+laut Firmware erst bei `VR App Start` eingeschaltet (`ANX7401_power_on >> power
+on`) → **während der PD-Aushandlung beim Einstecken ist er tot**; der Mac schließt
+den PD-Vertrag als „USB-only" ab, danach re-negotiiert niemand.
+
+**Einziger indirekter Firmware-Hebel (Experiment, nicht getestet):**
+1. STM32-Patch: ANX7401 **schon im Boot** (`BSP_Init`) einschalten + I²C-init,
+   statt erst bei `VR App Start`.
+2. Reset/Watchdog entfernen (`patched_goalA_noreset.dfu`), damit der Chip lebt.
+3. **Physisch neu einstecken** → der Mac (vollwertiger USB-C-DP-Source) fährt die
+   DP-Discovery neu, während der ANX bereits DP-Alt-Mode bewirbt.
+
+**Harte Vorbehalte:** (a) Timing — STM32-Boot ≈ 1,5 s vs. PD ≈ ms; ein erzwungenes
+Re-Negotiate (CC-Detach/Hard-Reset) ist wieder Sache des ANX-Chips. (b) Die
+ANX-I²C-Sequenzen sind undokumentierte Magic-Numbers (Analogix-Registermap nicht
+öffentlich). (c) Ohne **USB-PD-Sniffer** (Twinkie/PD-Analyzer) auf den CC-Leitungen
+ist nicht verifizierbar, ob DP-Alt-Mode überhaupt angeboten/abgelehnt wird — genau
+deshalb hat strfry einen Twinkie benutzt.
+
+> **Hinweis zur RE-Methodik:** Diese Firmware referenziert Log-Strings per
+> PC-relativem `ADR` (kein Literal-Pool mit Absolutadresse). Absolute
+> Pointer-Scans und Ghidras Auto-XREF greifen daher für die
+> Funktionsnamen-Strings nicht; das Skript `tools/ghidra_anx_powerpath.java`
+> dokumentiert diesen Versuch. Der PD-Kernbefund (kein PD-Code) beruht auf der
+> vollständigen String-/Symbol-Analyse aller Elemente und ist davon unabhängig.
+
 ## 5. Plan (billig → teuer)
 
 1. **Signatur-Check klären (Round-Trip, nicht-modifiziert).** Per HID
