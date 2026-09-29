@@ -372,6 +372,63 @@ deshalb hat strfry einen Twinkie benutzt.
 > dokumentiert diesen Versuch. Der PD-Kernbefund (kein PD-Code) beruht auf der
 > vollständigen String-/Symbol-Analyse aller Elemente und ist davon unabhängig.
 
+## 4f. Flash-Test durchgeführt — Tooling-Blocker (diese Session)
+
+Nach ausdrücklicher Freigabe („lass uns die Firmware testen") wurde der
+Round-Trip-Flash (Schritt 1, **unveränderte** Stock-Firmware) empirisch versucht.
+Ergebnis: **Das Gerät ließ sich mit dem verfügbaren macOS-Tooling nicht
+beschreiben. Es wurde NICHTS geflasht — die Stock-Firmware ist unverändert.**
+
+**Vorbereitung (verifiziert, nicht-destruktiv):**
+- Die drei extrahierten Stock-Elemente sind **byte-identisch** mit den bekannt-
+  guten Element-`.bin`s aus dem strfry-Gist (SHA-256 geprüft, alle 3 IDENTICAL) —
+  unser Stock-`.dfu` ist exakt das vom Gist-Autor erfolgreich geflashte Image.
+- Flash-Artefakt `myfw` exakt nach Gist-Rezept gebaut: 285-Byte-DfuSe-Header
+  entfernt (`dd … skip=285`), Plain-Suffix per `dfu-suffix -a` ergänzt.
+- `patched_goalA_noreset.dfu` unterscheidet sich von Stock in genau **3 Bytes in
+  elem2** (App @ 0x08020000) + 4 CRC-Bytes im Suffix; elem0/elem1 **0 Diffs**.
+
+**Blocker (empirisch, drei unabhängige Befunde):**
+1. **`dfu-util -D` bricht VOR dem Schreiben ab:** `Failed to retrieve string
+   descriptor 6` → `Could not read name, sscanf returned 0` → `Failed to parse
+   memory layout for alternate interface 0`. Der LGE-Downloader liefert den
+   ST-Memory-Layout-String **nicht** (Interface-`name="UNKNOWN"`), den dfu-util
+   0.11 für DfuSe-Geräte (Version 011a) zwingend zum Berechnen der Erase-Pages
+   braucht. `-s <addr>` umgeht das nicht — der Layout-Parse läuft trotzdem zuerst.
+2. **Gerät IST DfuSe:** Plain-DFU-Upload Block 0 liefert die Kommando-Liste
+   `00 21 41` = {0x21 Set-Address-Pointer, 0x41 Erase}. Es ist also kein
+   Plain-Sequential-Downloader, sondern nutzt die DfuSe-Kommando-Schnittstelle.
+3. **Adressierung STALLt:** Ein manueller DfuSe-Flasher (`tools/dfuse_flash_app.py`,
+   schreibt aus Sicherheitsgründen **nur** die App-Region, harter Guard gegen
+   Adressen < 0x08020000) wurde gebaut. Doch aus sauberem `dfuIDLE` liefert der
+   `Set-Address-Pointer`-Befehl (0x21) einen **USB-Pipe-Error (STALL)**; ebenso
+   adressiertes Upload. Das Gerät **honoriert die DfuSe-Adressierung über den
+   macOS/libusb-Pfad nicht**, obwohl es 0x21/0x41 bewirbt (deckt sich mit dem
+   früheren Befund „ignoriert Set-Address-Pointer, wrappt alle 16 KB").
+
+**Fazit:** dfu-util verweigert (kein Layout-String), roher DfuSe-Set-Address
+STALLt → **zuverlässiges, adressiertes Schreiben ist mit dem aktuellen
+macOS-Tooling nicht möglich**. Ein blindes Schreiben ohne funktionierende
+Adressierung wäre ein reales Brick-Risiko am einzigen Gerät — bei nach 4e
+zugleich sehr geringem strategischem Nutzen (der PD-Handshake sitzt im
+ANX-Chip, nicht in dieser Firmware). Daher **bewusst abgebrochen, kein Write**.
+
+**Mögliche Wege für einen echten Flash (künftig):**
+- **Linux-Host mit dfu-util:** Auf Linux liest dfu-util den Layout-String evtl.
+  fehlerfrei (der Gist-Autor arbeitete unter Linux) → normaler
+  `dfu-util -a 0 -D myfw`. Erste Option der Wahl.
+- **Windows** wie im Gist: Zadig (WinUSB-Treiber für „LGE Download Firmware
+  Update") + dfu-util-Release.
+- **Gepatchtes dfu-util**, das einen Layout-String manuell injiziert / den
+  DfuSe-Layout-Parse überspringt.
+- Erst wenn Set-Address auf einem anderen Host **nicht** STALLt, ist adressiertes
+  Schreiben überhaupt sinnvoll testbar.
+
+> **Geräte-Zustand nach Test:** Das Gerät verblieb im (sticky) DFU-Download-Modus
+> und ließ sich per Software (USB-Reset, DFU_DETACH, `dfu-util -e`) nicht
+> verlassen. **Physisch aus- und wieder einstecken** bootet es in die normale
+> (unveränderte) Firmware zurück — nichts wurde geschrieben, kein Brick.
+
 ## 5. Plan (billig → teuer)
 
 1. **Signatur-Check klären (Round-Trip, nicht-modifiziert).** Per HID
@@ -380,6 +437,9 @@ deshalb hat strfry einen Twinkie benutzt.
    **unveränderte Stock-Image** mit `dfu-util` zurückflashen. Klappt das →
    Bootloader akzeptiert unsignierte Images → Tür ist offen, Recovery bewiesen.
    *(Destruktiv/Brick-Risiko — nur nach ausdrücklicher Freigabe.)*
+   **⚠️ Update (4f): unter macOS aktuell nicht möglich** — dfu-util findet keinen
+   Layout-String, roher DfuSe-Set-Address STALLt. Erst auf Linux/Windows-Host
+   erneut versuchen.
 2. ~~Ghidra-Analyse von elem2.~~ **✅ ERLEDIGT** — Watchdog `FUN_08035a42`
    lokalisiert, dekompiliert und zwei verifizierte Patches erzeugt (Abschnitt 4b).
    Der Patch ist minimal und isoliert (2–4 Bytes in einer einzigen Funktion).
