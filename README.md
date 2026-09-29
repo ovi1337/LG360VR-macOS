@@ -49,8 +49,12 @@ where a working video path is more likely than on Apple-Silicon macOS:
   was decompiled and the reset isolated to a single instruction. Two verified 2–4
   byte patches are ready (`patched_goalA_noreset.dfu` removes the boot-loop reset;
   `patched_goalA_startvideo.dfu` also starts the video pipeline standalone).
-  **Nothing has been flashed** — flashing is destructive and only done with explicit
-  confirmation. See `firmware/README.md`.
+  **Nothing has been flashed on macOS** — dfu-util there aborts because the LGE
+  bootloader exposes no memory-layout string, and raw DfuSe set-address STALLs
+  (`firmware/README.md` §4f). Flash from **Linux/Windows** instead:
+  see **`firmware/FLASHING.md`** and the one-shot prep scripts
+  `firmware/tools/prepare_flash.sh` / `prepare_flash.ps1`.
+  See `firmware/README.md`.
 
 ## How the device works
 

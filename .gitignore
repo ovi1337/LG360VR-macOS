@@ -30,3 +30,6 @@ __pycache__/
 
 # on-device firmware reads (LG copyright, do not commit)
 firmware/dumps/
+
+# prepared flash artifacts (contain LG firmware, do not commit)
+firmware/out/

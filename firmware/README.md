@@ -431,6 +431,11 @@ ANX-Chip, nicht in dieser Firmware). Daher **bewusst abgebrochen, kein Write**.
 
 ## 5. Plan (billig → teuer)
 
+> **Praktische Durchführung:** siehe **`FLASHING.md`** (Linux/Windows-Anleitung)
+> und die Ein-Schritt-Vorbereitung `tools/prepare_flash.sh` (Linux/macOS) bzw.
+> `tools/prepare_flash.ps1` (Windows) — bauen & verifizieren alle Artefakte
+> reproduzierbar aus der Stock-`.dfu`, ohne etwas ans Gerät zu senden.
+
 1. **Signatur-Check klären (Round-Trip, nicht-modifiziert).** Per HID
    `GoToDload` (Opcode **0x09**, ungepolstert) in den DFU-Modus, prüfen dass das
    DFU-Gerät **`1004:6374`** erscheint (`dfu-util -l`, **ungefiltert**), und das
