@@ -21,6 +21,7 @@ fehlt (siehe `../README.md`).
 ## Architektur
 
 - `usb/Lg360Protocol.kt` — Befehls-Framing `[0x03][0x0C]+ASCII`, Kommando-Vokabular.
+  (Ausnahme: `GoToDload` nutzt Opcode `0x09`, ungepolstert — siehe `firmware/README.md` §4d.)
 - `usb/UsbController.kt` — USB-Host: Permission, `claimInterface(force=true)`, Senden
   (Interrupt-OUT, Fallback HID SET_REPORT), Lese-Thread (`UsbRequest`) für den Debug-Stream.
 - `usb/UsbDescribe.kt` — Deskriptor-Snapshot für den USB-Tab.

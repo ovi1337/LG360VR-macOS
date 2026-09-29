@@ -16,6 +16,9 @@ Windows tool:
 0x03 is the HID report ID (the device exposes report IDs 1..5, each a 63-byte
 output report on vendor usage page 0xFF00), 0x0C is the command opcode.
 
+The firmware-download command "GoToDload" is the exception: it uses opcode 0x09
+(not 0x0C) and is sent unpadded (`\x03\x09GoToDload`) — see go_dload.py.
+
 NOTE ON RESULT (see README.md): sending these commands is confirmed working - the
 headset firmware reports `do_VRAppStart: 1`, turns on the backlight and initialises
 its ANX7401 DisplayPort receiver + TC358870 HDMI->MIPI bridge. However the device

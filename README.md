@@ -42,7 +42,8 @@ where a working video path is more likely than on Apple-Silicon macOS:
 
 - **`firmware/`** — analysis of the stock `.dfu` and whether the device can be
   repurposed by patching its firmware. Finding: **feasible** — the firmware is an
-  unencrypted, unsigned STM32 **DfuSe** image (bootloader IDs `0483:DF11`), flashable
+  unencrypted, unsigned STM32 **DfuSe** image (`.dfu` suffix IDs `0483:DF11`;
+  the runtime DFU device is `1004:6374`), flashable
   with the already-installed `dfu-util`; integrity is a plain CRC32 that is trivially
   recomputed. **Ghidra RE went further:** the HDMI-wait watchdog (`FUN_08035a42`)
   was decompiled and the reset isolated to a single instruction. Two verified 2–4
@@ -85,8 +86,16 @@ Gyro   On/Off/Cal/Selftest/Get XYZ
 Accel  On/Off/Cal/Selftest/Get XYZ
 Compass On/Off/Get XYZ
 Set LCD Pattern Test      (BSP_SM5306_setLCDPatternTest)
-Go to Dload               (do_GoToDload -> firmware-update mode "LGE DownLoad Firmware Update")
+Go to Dload               (do_GoToDload -> firmware-update mode "LGE Download Firmware Update")
 ```
+
+> **Exception — the download command uses a different opcode.** `GoToDload` is sent
+> with opcode **`0x09`** (not `0x0C`) and **unpadded** (11 bytes):
+> `03 09 47 6f 54 6f 44 6c 6f 61 64` = `\x03\x09GoToDload`. After it is accepted the
+> device re-enumerates as the DFU device **"LGE Download Firmware Update"**, which
+> keeps USB VID:PID **`1004:6374`** (the `0483:DF11` pair is only the `.dfu` file's
+> suffix target, not the runtime device). See `go_dload.py` and `firmware/README.md`
+> §4d. Credit: [strfry gist](https://gist.github.com/strfry/d4097ec4167054c86826828a90019dbe).
 
 On Windows the reference tool replaces the HID driver with WinUSB (via Zadig) and
 writes raw to the interrupt OUT endpoint. On macOS that is unnecessary/blocked —
@@ -143,6 +152,9 @@ macOS correctly never assigns DP pins and never brings up video.
 - `activate.py` — sends `Sleep Disable` + `VR App Start` (the activation sequence).
 - `send_cmd.py` — send arbitrary firmware commands and print the debug responses,
   e.g. `python3 send_cmd.py "VR App Start" "Set LCD Pattern Test"`.
+- `go_dload.py` — put the device into DFU / firmware-download mode using the correct
+  `\x03\x09GoToDload` report (opcode 0x09, unpadded); then check `dfu-util -l`
+  (unfiltered) for the DFU device `1004:6374`.
 - `run.sh` — wrapper that sets `DYLD_LIBRARY_PATH` for Homebrew hidapi.
 
 ### Requirements
@@ -165,3 +177,24 @@ worth trying (all low-probability):
 
 The original author already notes this is "a gamble" even on Windows and depends
 entirely on the USB-C port's DP-alt-mode behaviour.
+
+## Related work — independent confirmation (strfry)
+
+Two projects by **strfry** independently confirm the findings here:
+
+- **[strfry/LG360VR](https://github.com/strfry/LG360VR)** — a hardware project to
+  drive the goggles from a normal DisplayPort source. Its result is the same
+  root cause found above: **a passive USB-C→DP adapter does NOT work**, and after
+  sniffing the USB-PD traffic with a Google **"Twinkie"** (Chromium-EC) probe the
+  conclusion is *"USB-PD handshake is definitely necessary to get a display
+  connection."* Their solution is an **active board with an STM32F072** (to perform
+  the DP-alt-mode sink PD handshake) **plus an SN75DP119 DisplayPort redriver** —
+  i.e. the monitor use-case needs active PD hardware, not just firmware patches.
+- **[strfry gist](https://gist.github.com/strfry/d4097ec4167054c86826828a90019dbe)**
+  — documents the correct `\x03\x09GoToDload` DFU-entry command (opcode `0x09`,
+  unpadded), that the DFU device stays at USB `1004:6374`, and a `dfu-util` flashing
+  recipe. Applied here in `go_dload.py` and `firmware/README.md` §4d.
+
+**Bottom line:** using the LG 360 VR as a Mac monitor is not achievable in software
+alone. It requires an active USB-C PD interposer (PD controller doing the DP-alt-mode
+sink handshake + a DP redriver), exactly the direction strfry's hardware takes.

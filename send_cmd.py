@@ -3,6 +3,9 @@
 Send arbitrary LG 360 VR firmware commands and capture responses.
 Usage: python3 send_cmd.py "VR App Start" "Set LCD Pattern Test" ...
 Each command is framed as HID output report: [0x03, 0x0C] + ASCII (padded to 64).
+NOTE: this 0x0C framing is for normal commands (VR App Start, sensors, ...). The
+firmware-download command "GoToDload" is the exception — it uses opcode 0x09 and is
+sent unpadded; use go_dload.py for that.
 """
 import sys, time, hid
 

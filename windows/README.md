@@ -64,6 +64,7 @@ Eigenständige EXE (ohne installiertes .NET, single-file):
 ## Architektur
 
 - `Lg360Protocol.cs` — Befehls-Framing `[0x03][0x0C]+ASCII`, Kommando-Vokabular.
+  (Ausnahme: `GoToDload` nutzt Opcode `0x09`, ungepolstert — siehe `firmware/README.md` §4d.)
 - `Lg360Device.cs` — HidSharp: Suchen/Öffnen, Senden (Output-Report), Lese-Thread
   für den Debug-Stream, Events `Log` / `ConnectionChanged`.
 - `PatternForm.cs` — randloses Vollbild-Testbild (GDI+) auf einem gewählten `Screen`.

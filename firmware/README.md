@@ -34,7 +34,7 @@ vorzuziehen.
 | Verschlüsselung | **keine** — Klartext-Symbole/Strings lesbar | `do_VRAppStart`, `ANX7401_power_on`, `BSP_TC358870XBG_Start_Video`, `LGE9911IoT` |
 | Signatur | **keine** Krypto-Strings gefunden (rsa/sha/ecdsa/aes/hmac/sign/verify/cert) | grep über alle Elemente = leer |
 | MCU | **STM32** (ARM Cortex-M, Thumb-2) | kohärente Vektortabelle + Reset-Trampolin disassembliert sauber |
-| Reflash-Weg | HID-Kommando **„Go to Dload"** → Reboot als `0483:DF11` → `dfu-util` | `do_GoToDload`-Symbol vorhanden; `dfu-util` ist installiert (`/opt/homebrew/bin/dfu-util`) |
+| Reflash-Weg | HID-Kommando **„GoToDload"** (Opcode **0x09**, ungepolstert) → Reboot als DFU-Gerät **`1004:6374`** („LGE Download Firmware Update") → `dfu-util` | Quelle: strfry-Gist (s. 4d); `do_GoToDload`-Symbol vorhanden; `dfu-util` installiert. **`0483:DF11` ist nur die Suffix-ID der *Datei*, NICHT die Laufzeit-USB-ID.** |
 
 ### Flash-Layout (3 Elemente)
 
@@ -193,11 +193,12 @@ movs r0,#0; pop {r4,pc}
 ```
 
 Es ist **kein** simples „Flag setzen + NVIC_SystemReset". Der Handler schreibt
-Peripherie-Register. In der Praxis erschien **nie** ein `0483:df11`-DFU-Gerät,
-weder über libusb (`dfu-util -l`) noch als USB-Enumeration. Download läuft
-vermutlich **LGE-custom über HID** (elem1 „LGE DownLoad Firmware Update",
-`DFU_CMD_REBOOT"`), nicht über Standard-ST-DFU → `dfu-util` ist evtl. das
-falsche Werkzeug.
+Peripherie-Register. In der Praxis erschien **nie** ein `0483:df11`-DFU-Gerät —
+**aber** genau das war der Fehler (siehe 4d): (1) das Kommando wurde mit dem
+falschen Opcode `0x0C` statt `0x09` gesendet und (2) es wurde nach der falschen
+USB-ID `0483:df11` gesucht statt nach dem echten Laufzeit-DFU-Gerät `1004:6374`.
+Download läuft **LGE-custom** (elem1 „LGE DownLoad Firmware Update",
+`DFU_CMD_REBOOT"`); das Gerät bleibt dabei unter VID:PID `1004:6374`.
 
 **`VR App Start` bestätigt live funktionsfähig** (HID-Report `03 0C "VR App
 Start"`). Firmware-Log:
@@ -256,10 +257,54 @@ lokalisiert und mitgepatcht werden.
 Blocker Nr. 1 (Mac handelt keinen DP-Alt-Mode aus, Brille bewirbt DP nicht auf
 PD-Ebene). Aufsetzerkennung ändert am Ergebnis nichts.
 
+## 4d. Externe Bestätigung & Protokoll-Korrektur (strfry)
+
+Zwei externe Quellen von **strfry** bestätigen die Kernanalyse und korrigieren
+Detailfehler:
+
+**(1) Gist — `GoToDload`-Protokoll**
+<https://gist.github.com/strfry/d4097ec4167054c86826828a90019dbe>
+
+- Der Download-Befehl nutzt **Opcode `0x09`**, nicht `0x0C`, und wird
+  **ungepolstert** (11 Bytes) gesendet:
+  `03 09 47 6f 54 6f 44 6c 6f 61 64` = `\x03\x09GoToDload`.
+  Linux: `echo -en "\x03\x09GoToDload" > /dev/hidraw0`.
+  → Erklärt, warum das frühere `0x0C`-Framing **nie** DFU auslöste.
+- Nach Annahme verschwindet das Vendor-HID und re-enumeriert als DFU-Gerät
+  **„LGE Download Firmware Update"** — weiterhin USB **`1004:6374`**
+  (NICHT `0483:df11`; letzteres ist nur die Suffix-Ziel-ID der `.dfu`-Datei).
+  → Erklärt, warum `dfu-util -l` (gefiltert auf `0483:df11`) das Gerät „nie"
+  fand. Windows: Zadig-WinUSB-Treiber für „LGE Download Firmware Update".
+- Flash-Rezept (Gist): Stock-`.dfu` aus `LG 360 VR Manager.apk`
+  (`assets/LGR100AT-…MAY-02-2016+0.dfu`), 285-Byte-DFU-Suffix per
+  `dd … bs=1 skip=285` strippen, mit `dfu-suffix -a` neu setzen, `dfu-util` flashen.
+- Umgesetzt im Repo als **`go_dload.py`** (macOS, hidapi, Opcode 0x09, ungepolstert).
+
+**(2) Hardware-Projekt — `strfry/LG360VR`** (Twinkie-USB-PD-Analyse)
+<https://github.com/strfry/LG360VR>
+
+Unabhängige, **deckungsgleiche** Bestätigung von Blocker Nr. 1:
+
+- Ein **passiver USB-C→DisplayPort-Adapter funktioniert NICHT.**
+- Ergebnis der USB-PD-Sniffing-Analyse (mit Google **„Twinkie"**/Chromium-EC,
+  Submodul `LG360VR-EC`, Branch `firmware-twinkie-9628.B`):
+  **„USB-PD-Handshake ist definitiv notwendig, um eine Display-Verbindung zu
+  bekommen."** — exakt der hier gefundene PD-Alt-Mode-Blocker.
+- Lösungsweg von strfry: **aktive Platine** mit **STM32F072** (führt den
+  PD-Handshake als DP-Sink durch, bewirbt DP-Alt-Mode) **+ SN75DP119**
+  DisplayPort-Redriver/Buffer, plus USB-C- und DP-Buchse (KiCad im Repo).
+
+**Konsequenz:** Der Weg „Brille als DP-Monitor" ist **kein reines
+Software-/Firmware-Problem**. Er erfordert eine **aktive USB-C-PD-Zwischenplatine**
+(PD-Controller, der den DP-Alt-Mode-Sink-Handshake macht + DP-Redriver) —
+identisch zu strfrys Hardware-Ansatz. Firmware-Patches der Brille allein
+(Watchdog/Reset) genügen dafür nicht.
+
 ## 5. Plan (billig → teuer)
 
 1. **Signatur-Check klären (Round-Trip, nicht-modifiziert).** Per HID
-   `do_GoToDload` in den DFU-Modus, prüfen dass `0483:DF11` erscheint, und das
+   `GoToDload` (Opcode **0x09**, ungepolstert) in den DFU-Modus, prüfen dass das
+   DFU-Gerät **`1004:6374`** erscheint (`dfu-util -l`, **ungefiltert**), und das
    **unveränderte Stock-Image** mit `dfu-util` zurückflashen. Klappt das →
    Bootloader akzeptiert unsignierte Images → Tür ist offen, Recovery bewiesen.
    *(Destruktiv/Brick-Risiko — nur nach ausdrücklicher Freigabe.)*
@@ -340,8 +385,10 @@ python3 tools/dfuse.py patch LGR100AT-*.dfu patched.dfu 0x08020000 0x<REL> <hexb
 ### Flash-Befehle (DESTRUKTIV — nur nach Freigabe, hier zur Doku)
 
 ```bash
-# Gerät ist nach "Go to Dload" als 0483:DF11 im DFU-Modus:
-dfu-util -l                                   # Ziel/Alt-Setting anzeigen
+# Gerät via HID nach DFU schalten (Opcode 0x09, ungepolstert):
+python3 go_dload.py                           # sendet \x03\x09GoToDload
+# Gerät re-enumeriert als DFU "LGE Download Firmware Update" (USB 1004:6374):
+dfu-util -l                                   # UNGEFILTERT — Ziel 1004:6374, Alt-Setting anzeigen
 # 1) Round-Trip zuerst: Stock-Image zurückflashen (beweist unsigned-OK + Recovery)
 dfu-util -a 0 -s 0x08020000 -D LGR100AT-00-V10d-310-XX-MAY-02-2016+0.dfu
 # 2) Dann der Patch (nur App-Region, NICHT den Bootloader):
